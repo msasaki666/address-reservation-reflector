@@ -33,7 +33,7 @@ interface Setting {
   homeName: string;
   rooms: Room[];
   sheet: sheetSetting;
-  newer_than: string;
+  searchQuery: string;
 }
 
 const rooms: Room[] = [
@@ -55,7 +55,15 @@ const defaultSetting: Setting = {
       icalUID: 'ical_uid',
     },
   },
-  newer_than: '1d',
+  searchQuery: 'newer_than:1d',
+};
+
+const generateEventTitle = (
+  room: string,
+  reserver: string,
+  parking: string
+) => {
+  return `${room} ${reserver} ${parking}`;
 };
 
 const extractPlainBodies = (
@@ -63,6 +71,7 @@ const extractPlainBodies = (
 ): string[] => {
   return threads
     .flatMap(thread => thread.getMessages())
+    .sort((a, b) => a.getDate().getTime() - b.getDate().getTime())
     .map(message => message.getPlainBody());
 };
 
@@ -75,6 +84,12 @@ const extractSpecificReservationDetail = (
   );
   return matched ? matched[1] : null;
 };
+const extractArriveAtFromRow = (row: string) => {
+  return row.replace(/年|月/g, '/').replace(/日 \((\d{2}:\d{2})ごろ\)/, ' $1');
+};
+const extractLeaveAtFromRow = (row: string) => {
+  return row.replace(/年|月/g, '/').replace(/日 \((\d{2}:\d{2})まで\)/, ' $1');
+};
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const createSchedulePerDay = (
@@ -84,10 +99,10 @@ const createSchedulePerDay = (
   setting: Setting = defaultSetting
 ): void => {
   const threads = gmailApp.search(
-    `subject:【ADDress】${setting.homeName}：予約リクエスト自動承認のお知らせ newer_than:${setting.newer_than}`
+    `subject:【ADDress】${setting.homeName}：予約リクエスト自動承認のお知らせ ${setting.searchQuery}`
   );
   const messagePlainBodies = extractPlainBodies(threads);
-  interface ReservationDetail {
+  interface ReservationDetailCreate {
     id: string | null;
     room: string;
     reserver: string;
@@ -97,24 +112,18 @@ const createSchedulePerDay = (
     raw: string;
   }
 
-  const reservationDetails: ReservationDetail[] = messagePlainBodies.map(
+  const reservationDetails: ReservationDetailCreate[] = messagePlainBodies.map(
     message => {
       const arriveAtStr = extractSpecificReservationDetail(
         message,
         /到着日時\s*：/
       );
-      const arriveAt =
-        arriveAtStr
-          ?.replace(/年|月/g, '/')
-          ?.replace(/日 \((\d{2}:\d{2})ごろ\)/, ' $1') || null;
+      const arriveAt = arriveAtStr ? extractArriveAtFromRow(arriveAtStr) : null;
       const leaveAtStr = extractSpecificReservationDetail(
         message,
         /出発日時\s*：/
       );
-      const leaveAt =
-        leaveAtStr
-          ?.replace(/年|月/g, '/')
-          ?.replace(/日 \((\d{2}:\d{2})まで\)/, ' $1') || null;
+      const leaveAt = leaveAtStr ? extractLeaveAtFromRow(leaveAtStr) : null;
       const parkingStr = extractSpecificReservationDetail(
         message,
         /駐車場利用\s*：/
@@ -143,7 +152,11 @@ const createSchedulePerDay = (
     .forEach(reservation => {
       const startAt = new Date(reservation.arriveAt as string);
       const endAt = new Date(reservation.leaveAt as string);
-      const title = `${reservation.room} ${reservation.reserver} ${reservation.parking}`;
+      const title = generateEventTitle(
+        reservation.room,
+        reservation.reserver,
+        reservation.parking
+      );
       const option = { description: reservation.raw };
       const event = calendar.createEvent(title, startAt, endAt, option);
       const eventColor = setting.rooms.find(
@@ -193,7 +206,7 @@ const deleteSchedulePerDay = (
   setting: Setting = defaultSetting
 ): void => {
   const threads = gmailApp.search(
-    `subject:【ADDress】${setting.homeName}：予約キャンセル受信のお知らせ newer_than:${setting.newer_than}`
+    `subject:【ADDress】${setting.homeName}：予約キャンセル受信のお知らせ ${setting.searchQuery}`
   );
   const messagePlainBodies = extractPlainBodies(threads);
 
@@ -253,4 +266,135 @@ const deleteSchedulePerDay = (
     }
   });
 };
-// const updateSchedulePerDay = () => {};
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const updateSchedulePerDay = (
+  gmailApp: GoogleAppsScript.Gmail.GmailApp = GmailApp,
+  calendarApp: GoogleAppsScript.Calendar.CalendarApp = CalendarApp,
+  spreadsheetApp: GoogleAppsScript.Spreadsheet.SpreadsheetApp = SpreadsheetApp,
+  setting: Setting = defaultSetting
+): void => {
+  const threads = gmailApp.search(
+    `subject:【ADDress】${setting.homeName}：予約変更受信のお知らせ ${setting.searchQuery}`
+  );
+  const messagePlainBodies = extractPlainBodies(threads);
+  interface ReservationDetail {
+    reserver: string;
+    arriveAt: string | null;
+    leaveAt: string | null;
+    parking: string;
+  }
+  interface ReservationDetailUpdate {
+    id: string | null;
+    room: string;
+    before: ReservationDetail;
+    after: ReservationDetail;
+    raw: string;
+  }
+
+  const extractReservationDetail = (plainBody: string): ReservationDetail => {
+    const arriveAtStr = extractSpecificReservationDetail(
+      plainBody,
+      /到着日時\s*：/
+    );
+    const arriveAt = arriveAtStr ? extractArriveAtFromRow(arriveAtStr) : null;
+    const leaveAtStr = extractSpecificReservationDetail(
+      plainBody,
+      /出発日時\s*：/
+    );
+    const leaveAt = leaveAtStr ? extractLeaveAtFromRow(leaveAtStr) : null;
+    const parkingStr = extractSpecificReservationDetail(
+      plainBody,
+      /駐車場利用\s*：/
+    );
+    const parking = parkingStr === '予約なし' ? '' : '🚗';
+
+    return {
+      reserver:
+        extractSpecificReservationDetail(plainBody, /予約者名\s*：/) || '',
+      arriveAt: arriveAt,
+      leaveAt: leaveAt,
+      parking: parking,
+    };
+  };
+
+  const reservationDetails: ReservationDetailUpdate[] = messagePlainBodies
+    .map(message => {
+      const matched = message.match(/＜変更後＞(.*)＜変更前＞(.*)/s);
+      if (!matched) return;
+      const [beforeStr, afterStr] = [matched[1], matched[2]];
+      console.log(`beforeStr: ${beforeStr}`);
+      console.log(`afterStr: ${afterStr}`);
+
+      return {
+        id: extractSpecificReservationDetail(beforeStr, /予約ID\s*：/),
+        room:
+          extractSpecificReservationDetail(beforeStr, /部屋番号\s*：/) || '',
+        before: extractReservationDetail(beforeStr),
+        after: extractReservationDetail(afterStr),
+        raw: message,
+      };
+    })
+    .filter(r => r && r.id) as ReservationDetailUpdate[];
+
+  const sheet = spreadsheetApp
+    .getActiveSpreadsheet()
+    .getSheetByName(setting.sheet.name);
+  if (!sheet) {
+    console.error('Sheet not found: ' + setting.sheet.name);
+    return;
+  }
+
+  const firstRowRange = sheet.getRange(1, 1, 1, sheet.getLastColumn());
+  const firstRowValues = firstRowRange.getValues()[0];
+  const reservationIDColumnIndex =
+    firstRowValues.findIndex(v => v === setting.sheet.header.reservationID) + 1;
+  const icalUIDColumnIndex =
+    firstRowValues.findIndex(v => v === setting.sheet.header.icalUID) + 1;
+  if (reservationIDColumnIndex === 0) {
+    console.error('Column not found: ' + setting.sheet.header.reservationID);
+    return;
+  }
+  if (icalUIDColumnIndex === 0) {
+    console.error('Column not found: ' + setting.sheet.header.icalUID);
+    return;
+  }
+  const offset = 2;
+  const reservationIDInputtedRange = sheet.getRange(
+    offset,
+    reservationIDColumnIndex,
+    sheet.getLastRow(),
+    reservationIDColumnIndex
+  );
+
+  const reservationIDs = reservationIDInputtedRange
+    .getValues()
+    .map((v): string => {
+      return v[0];
+    });
+
+  reservationDetails.forEach(detail => {
+    const index = reservationIDs.indexOf(detail.id as string);
+    if (index === -1) return;
+
+    const updateTargetRowIndex = index + offset;
+    const icalUID = sheet
+      .getRange(updateTargetRowIndex, icalUIDColumnIndex)
+      .getValue();
+    const event = calendarApp.getEventById(icalUID);
+    if (event) {
+      event.setTime(
+        new Date(detail.after.arriveAt as string),
+        new Date(detail.after.leaveAt as string)
+      );
+      event.setTitle(
+        generateEventTitle(
+          detail.room,
+          detail.after.reserver,
+          detail.after.parking
+        )
+      );
+      event.setDescription(detail.raw);
+    }
+  });
+};
