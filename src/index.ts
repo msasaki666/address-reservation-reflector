@@ -322,7 +322,7 @@ const updateSchedulePerDay = (
     .map(message => {
       const matched = message.match(/＜変更後＞(.*)＜変更前＞(.*)/s);
       if (!matched) return;
-      const [beforeStr, afterStr] = [matched[1], matched[2]];
+      const [afterStr, beforeStr] = [matched[1], matched[2]];
       console.log(`beforeStr: ${beforeStr}`);
       console.log(`afterStr: ${afterStr}`);
 
