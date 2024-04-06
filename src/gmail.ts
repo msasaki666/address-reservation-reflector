@@ -27,6 +27,7 @@ interface sheetHeaderSetting {
 interface sheetSetting {
   name: string;
   header: sheetHeaderSetting;
+  valueInputtedRowOffset: number;
 }
 
 interface Setting {
@@ -63,6 +64,7 @@ const defaultSetting: Setting = {
       reservationID: 'reservation_id',
       icalUID: 'ical_uid',
     },
+    valueInputtedRowOffset: 2,
   },
   searchQuery: generateSearchQuery(Session.getScriptTimeZone(), new Date()),
 };
@@ -73,6 +75,14 @@ const generateEventTitle = (
   parking: string
 ) => {
   return `${room.replace(/（.*）/, '')} ${reserver} ${parking}`;
+};
+
+const extractReservationIDs = (
+  reservationIDInputtedRange: GoogleAppsScript.Spreadsheet.Range
+) => {
+  return reservationIDInputtedRange.getValues().map((v): string => {
+    return v[0];
+  });
 };
 
 const extractPlainBodies = (
@@ -151,10 +161,48 @@ const createSchedulePerDay = (
     }
   );
 
+  const sheet = spreadsheetApp
+    .getActiveSpreadsheet()
+    .getSheetByName(setting.sheet.name);
+  if (!sheet) {
+    console.error('Sheet not found: ' + setting.sheet.name);
+    return;
+  }
+  const firstRowRange = sheet.getRange(1, 1, 1, sheet.getLastColumn());
+  const firstRowValues = firstRowRange.getValues()[0];
+  const reservationIDColumnIndex =
+    firstRowValues.findIndex(v => v === setting.sheet.header.reservationID) + 1;
+  const icalUIDColumnIndex =
+    firstRowValues.findIndex(v => v === setting.sheet.header.icalUID) + 1;
+  if (reservationIDColumnIndex === 0) {
+    console.error('Column not found: ' + setting.sheet.header.reservationID);
+    return;
+  }
+  if (icalUIDColumnIndex === 0) {
+    console.error('Column not found: ' + setting.sheet.header.icalUID);
+    return;
+  }
+
+  const reservationIDInputtedRange = sheet.getRange(
+    setting.sheet.valueInputtedRowOffset,
+    reservationIDColumnIndex,
+    sheet.getLastRow(),
+    reservationIDColumnIndex
+  );
+
+  const reservationIDs = extractReservationIDs(reservationIDInputtedRange);
+
   const calendar = calendarApp.getDefaultCalendar();
   return reservationDetails
     .filter(r => {
       return r.id && r.arriveAt && r.leaveAt;
+    })
+    .filter(r => {
+      if (reservationIDs.includes(r.id as string)) {
+        console.log('Already inputted reservation id: ', r.id);
+        return false;
+      }
+      return true;
     })
     .forEach(reservation => {
       const startAt = new Date(reservation.arriveAt as string);
@@ -171,31 +219,6 @@ const createSchedulePerDay = (
       )?.color;
       if (eventColor) {
         event.setColor(eventColor.toString());
-      }
-      const sheet = spreadsheetApp
-        .getActiveSpreadsheet()
-        .getSheetByName(setting.sheet.name);
-      if (!sheet) {
-        console.error('Sheet not found: ' + setting.sheet.name);
-        return;
-      }
-      const firstRowRange = sheet.getRange(1, 1, 1, sheet.getLastColumn());
-      const firstRowValues = firstRowRange.getValues()[0];
-      const reservationIDColumnIndex =
-        firstRowValues.findIndex(
-          v => v === setting.sheet.header.reservationID
-        ) + 1;
-      const icalUIDColumnIndex =
-        firstRowValues.findIndex(v => v === setting.sheet.header.icalUID) + 1;
-      if (reservationIDColumnIndex === 0) {
-        console.error(
-          'Column not found: ' + setting.sheet.header.reservationID
-        );
-        return;
-      }
-      if (icalUIDColumnIndex === 0) {
-        console.error('Column not found: ' + setting.sheet.header.icalUID);
-        return;
       }
       const nextRow = sheet.getLastRow() + 1;
       sheet
@@ -244,24 +267,20 @@ const deleteSchedulePerDay = (
     console.error('Column not found: ' + setting.sheet.header.icalUID);
     return;
   }
-  const offset = 2;
+
   const reservationIDInputtedRange = sheet.getRange(
-    offset,
+    setting.sheet.valueInputtedRowOffset,
     reservationIDColumnIndex,
     sheet.getLastRow(),
     reservationIDColumnIndex
   );
 
-  const reservationIDs = reservationIDInputtedRange
-    .getValues()
-    .map((v): string => {
-      return v[0];
-    });
+  const reservationIDs = extractReservationIDs(reservationIDInputtedRange);
   extractedReservationIDs.forEach(id => {
     const index = reservationIDs.indexOf(id as string);
     if (index === -1) return;
 
-    const deletionTargetRowIndex = index + offset;
+    const deletionTargetRowIndex = index + setting.sheet.valueInputtedRowOffset;
     const icalUID = sheet
       .getRange(deletionTargetRowIndex, icalUIDColumnIndex)
       .getValue();
@@ -361,9 +380,9 @@ const updateSchedulePerDay = (
     console.error('Column not found: ' + setting.sheet.header.icalUID);
     return;
   }
-  const offset = 2;
+
   const reservationIDInputtedRange = sheet.getRange(
-    offset,
+    setting.sheet.valueInputtedRowOffset,
     reservationIDColumnIndex,
     sheet.getLastRow(),
     reservationIDColumnIndex
@@ -379,7 +398,7 @@ const updateSchedulePerDay = (
     const index = reservationIDs.indexOf(detail.id as string);
     if (index === -1) return;
 
-    const updateTargetRowIndex = index + offset;
+    const updateTargetRowIndex = index + setting.sheet.valueInputtedRowOffset;
     const icalUID = sheet
       .getRange(updateTargetRowIndex, icalUIDColumnIndex)
       .getValue();
