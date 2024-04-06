@@ -45,6 +45,15 @@ const rooms: Room[] = [
   { name: '204', color: CalendarApp.EventColor.PALE_GREEN },
 ];
 
+const generateSearchQuery = (timeZone: string, now: Date): string => {
+  const yesterday = new Date(now.getTime());
+  yesterday.setDate(now.getDate() - 1);
+  const dateFormatForSearch = 'yyyy/MM/dd';
+  const after = Utilities.formatDate(yesterday, timeZone, dateFormatForSearch);
+  const before = Utilities.formatDate(now, timeZone, dateFormatForSearch);
+  return `after:${after} before:${before}`;
+};
+
 const defaultSetting: Setting = {
   homeName: '氷見C邸',
   rooms: rooms,
@@ -55,7 +64,7 @@ const defaultSetting: Setting = {
       icalUID: 'ical_uid',
     },
   },
-  searchQuery: 'newer_than:1d',
+  searchQuery: generateSearchQuery(Session.getScriptTimeZone(), new Date()),
 };
 
 const generateEventTitle = (
@@ -145,7 +154,6 @@ const createSchedulePerDay = (
   const calendar = calendarApp.getDefaultCalendar();
   return reservationDetails
     .filter(r => {
-      console.log(r);
       return r.id && r.arriveAt && r.leaveAt;
     })
     .forEach(reservation => {
@@ -320,9 +328,6 @@ const updateSchedulePerDay = (
       const matched = message.match(/＜変更後＞(.*)＜変更前＞(.*)/s);
       if (!matched) return;
       const [afterStr, beforeStr] = [matched[1], matched[2]];
-      console.log(`beforeStr: ${beforeStr}`);
-      console.log(`afterStr: ${afterStr}`);
-
       return {
         id: extractSpecificReservationDetail(beforeStr, /予約ID\s*：/),
         room:
