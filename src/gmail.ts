@@ -46,6 +46,9 @@ const rooms: Room[] = [
   { name: '204', color: CalendarApp.EventColor.PALE_GREEN },
 ];
 
+// NOTE: また使うかもしれないので残しておく
+// generateSearchQuery(Session.getScriptTimeZone(), new Date()),
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const generateSearchQuery = (timeZone: string, now: Date): string => {
   const yesterday = new Date(now.getTime());
   yesterday.setDate(now.getDate() - 1);
@@ -66,7 +69,7 @@ const defaultSetting: Setting = {
     },
     valueInputtedRowOffset: 2,
   },
-  searchQuery: generateSearchQuery(Session.getScriptTimeZone(), new Date()),
+  searchQuery: 'newer_than:1d',
 };
 
 const generateEventTitle = (
