@@ -19,21 +19,21 @@ interface Room {
   color: GoogleAppsScript.Calendar.EventColor;
 }
 
-interface sheetHeaderSetting {
+interface SheetHeader {
   reservationID: string;
   icalUID: string;
 }
 
-interface sheetSetting {
+interface Sheet {
   name: string;
-  header: sheetHeaderSetting;
+  header: SheetHeader;
   valueInputtedRowOffset: number;
 }
 
 interface Setting {
   homeName: string;
   rooms: Room[];
-  sheet: sheetSetting;
+  sheet: Sheet;
   searchQuery: string;
 }
 
