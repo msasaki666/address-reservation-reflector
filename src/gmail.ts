@@ -120,7 +120,7 @@ const createSchedulePerDay = (
   setting: Setting = defaultSetting
 ): void => {
   const threads = gmailApp.search(
-    `subject:【ADDress】${setting.homeName}：予約申請自動承認のお知らせ ${setting.searchQuery}`
+    `subject:【${setting.homeName}】予約申請自動承認のお知らせ ${setting.searchQuery}`
   );
   const messagePlainBodies = extractPlainBodies(threads);
   interface ReservationDetailCreate {
@@ -238,7 +238,7 @@ const deleteSchedulePerDay = (
   setting: Setting = defaultSetting
 ): void => {
   const threads = gmailApp.search(
-    `subject:【ADDress】${setting.homeName}：予約キャンセルのお知らせ ${setting.searchQuery}`
+    `subject:【${setting.homeName}】予約キャンセルのお知らせ ${setting.searchQuery}`
   );
   const messagePlainBodies = extractPlainBodies(threads);
 
@@ -302,7 +302,7 @@ const updateSchedulePerDay = (
   setting: Setting = defaultSetting
 ): void => {
   const threads = gmailApp.search(
-    `subject:【ADDress】${setting.homeName}：予約変更のお知らせ ${setting.searchQuery}`
+    `subject:【${setting.homeName}】予約変更のお知らせ ${setting.searchQuery}`
   );
   const messagePlainBodies = extractPlainBodies(threads);
   interface ReservationDetail {
